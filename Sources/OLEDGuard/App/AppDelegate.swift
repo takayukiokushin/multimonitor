@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appState: AppState!
     private var settingsStore: SettingsStore!
     private var loginItem: LoginItemController!
+    private var overlayManager: OverlayManager!
     private var settingsWindow: SettingsWindowController!
     private var cancellables: Set<AnyCancellable> = []
 
@@ -21,11 +22,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState = AppState()
         settingsStore = SettingsStore()
         loginItem = LoginItemController()
+        overlayManager = OverlayManager(displayManager: displayManager, store: settingsStore)
+        // テスト表示で失敗したら、警告が見えるよう設定画面を開く
+        overlayManager.onMediaError = { [weak self] _, isTest in
+            if isTest { self?.settingsWindow.show() }
+        }
         settingsWindow = SettingsWindowController(
             displayManager: displayManager,
             appState: appState,
             store: settingsStore,
-            loginItem: loginItem
+            loginItem: loginItem,
+            overlays: overlayManager
         )
 
         // 接続中モニターの名前を設定に記録しておく(未接続になったときの表示用)
@@ -58,8 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        // ステップ3で実装する。action が nil の間はメニュー上で無効表示になる。
-        let testItem = NSMenuItem(title: "今すぐテスト表示", action: nil, keyEquivalent: "")
+        let testItem = NSMenuItem(title: "今すぐテスト表示", action: #selector(testOverlay), keyEquivalent: "")
+        testItem.target = self
         menu.addItem(testItem)
 
         menu.addItem(.separator())
@@ -78,6 +85,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
+    }
+
+    /// 「待ち受けを使う」がオンの接続中モニターすべてに、待ち受けを表示する。
+    @objc private func testOverlay() {
+        let targets = displayManager.displays.filter {
+            settingsStore.displaySettings(for: $0.uuid).isEnabled
+        }
+        guard !targets.isEmpty else {
+            NSApp.activate()
+            let alert = NSAlert()
+            alert.messageText = "待ち受けを使うモニターがありません"
+            alert.informativeText = "設定画面で、モニターの「待ち受けを使う」をオンにしてください。"
+            alert.runModal()
+            settingsWindow.show()
+            return
+        }
+        for display in targets {
+            overlayManager.show(display: display, isTest: true)
+        }
     }
 
     private func updatePauseItem() {

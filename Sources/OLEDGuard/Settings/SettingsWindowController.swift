@@ -8,13 +8,16 @@ final class SettingsWindowController {
     private let appState: AppState
     private let store: SettingsStore
     private let loginItem: LoginItemController
+    private let overlays: OverlayManager
     private var window: NSWindow?
 
-    init(displayManager: DisplayManager, appState: AppState, store: SettingsStore, loginItem: LoginItemController) {
+    init(displayManager: DisplayManager, appState: AppState, store: SettingsStore,
+         loginItem: LoginItemController, overlays: OverlayManager) {
         self.displayManager = displayManager
         self.appState = appState
         self.store = store
         self.loginItem = loginItem
+        self.overlays = overlays
     }
 
     func show() {
@@ -24,6 +27,7 @@ final class SettingsWindowController {
                 .environmentObject(appState)
                 .environmentObject(store)
                 .environmentObject(loginItem)
+                .environmentObject(overlays)
             let hosting = NSHostingController(rootView: root)
             let window = NSWindow(contentViewController: hosting)
             window.title = "OLEDGuard 設定"

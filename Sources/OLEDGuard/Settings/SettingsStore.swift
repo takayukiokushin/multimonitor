@@ -14,6 +14,8 @@ final class SettingsStore: ObservableObject {
     /// 増えるたびに設定画面がファイルの有無を確認し直す。
     /// (@State は SwiftUI のマクロで、コマンドラインツールだけの環境ではビルドできないため使わない)
     @Published private(set) var fileCheckToken = 0
+    /// 待ち受けの読み込みに失敗したときのメッセージ(UUID ごと、保存しない)
+    @Published private(set) var mediaErrors: [String: String] = [:]
 
     private let file: SettingsFile
 
@@ -37,6 +39,14 @@ final class SettingsStore: ObservableObject {
 
     func removeSettings(for uuid: String) {
         settings.displays[uuid] = nil
+    }
+
+    func setMediaError(_ message: String, for uuid: String) {
+        mediaErrors[uuid] = message
+    }
+
+    func clearMediaError(for uuid: String) {
+        mediaErrors[uuid] = nil
     }
 
     func recheckFiles() {

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var displayManager: DisplayManager
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var loginItem: LoginItemController
+    @EnvironmentObject private var overlays: OverlayManager
 
     private var disconnectedUUIDs: [String] {
         let connected = Set(displayManager.displays.map(\.uuid))
@@ -51,7 +52,9 @@ struct SettingsView: View {
                 Section("モニター \(index + 1): \(display.name)\(display.isMain ? "(メイン)" : "")") {
                     DisplaySettingsEditor(
                         settings: binding(for: display),
-                        fileCheckToken: store.fileCheckToken
+                        fileCheckToken: store.fileCheckToken,
+                        mediaError: store.mediaErrors[display.uuid],
+                        onTest: { overlays.showTest(uuid: display.uuid) }
                     )
                     DisclosureGroup("モニター情報") {
                         DisplayInfoDetails(display: display)
@@ -85,6 +88,9 @@ struct SettingsView: View {
             set: { newValue in
                 var value = newValue
                 value.lastKnownName = display.name
+                if value.mediaPath != store.displaySettings(for: display.uuid).mediaPath {
+                    store.clearMediaError(for: display.uuid)
+                }
                 store.settings.displays[display.uuid] = value
             }
         )
@@ -95,6 +101,8 @@ struct SettingsView: View {
 private struct DisplaySettingsEditor: View {
     @Binding var settings: DisplaySettings
     let fileCheckToken: Int
+    let mediaError: String?
+    let onTest: () -> Void
 
     var body: some View {
         Toggle("待ち受けを使う", isOn: $settings.isEnabled)
@@ -129,11 +137,20 @@ private struct DisplaySettingsEditor: View {
         ForEach(warnings, id: \.self) { message in
             WarningLabel(message)
         }
+
+        HStack {
+            Spacer()
+            Button("今すぐテスト表示", action: onTest)
+                .help("このモニターに待ち受けを表示します。クリックで閉じます。")
+        }
     }
 
     private var warnings: [String] {
         _ = fileCheckToken
         var result: [String] = []
+        if let mediaError {
+            result.append("前回の表示に失敗しました: \(mediaError)")
+        }
         if let url = settings.mediaURL {
             if MediaKind(url: url) == nil {
                 result.append("対応していない形式のファイルです: \(url.lastPathComponent)")
