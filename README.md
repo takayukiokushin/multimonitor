@@ -93,5 +93,8 @@ Sources/OLEDGuard/
   Overlay/                  待ち受けウィンドウ、画像/PDF の読み込み、動画再生
   Settings/                 設定画面、設定の保存、自動起動、サムネイル
 Tests/OLEDGuardCoreChecks/  ユニットテスト(make test)
+Resources/Info.plist        .app の設定(Dock に出さない LSUIElement など)
+Resources/AppIcon.icns      アプリのアイコン
+Resources/AppIcon/AppIcon.svg  アイコンの元データ(眠るモニター / 暗いラベンダー)
 scripts/build-app.sh        .app の組み立てと ad-hoc 署名
 ```

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- OLEDGuard のアイコン(① 眠るモニター / C3 暗いラベンダー)
+       macOS のアイコン格子に合わせ、1024 の中に 824 の角丸四角を置く -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a3388"/>
+      <stop offset="1" stop-color="#1a1240"/>
+    </linearGradient>
+    <mask id="crescent">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="561" cy="438" r="82" fill="#000"/>
+    </mask>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <g transform="translate(100 100) scale(4.12)">
+    <rect width="200" height="200" rx="45" fill="url(#bg)" filter="url(#shadow)"/>
+  </g>
+  <g transform="translate(100 100) scale(4.12)" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="40" y="50" width="120" height="82" rx="9" fill="#000" fill-opacity="0.35" stroke-width="7"/>
+    <line x1="100" y1="132" x2="100" y2="150" stroke-width="7" stroke-linecap="butt"/>
+    <line x1="76" y1="153" x2="124" y2="153" stroke-width="7"/>
+    <path d="M118.5 72 H126.5 L118.5 80 H126.5" stroke="#fff0b8" stroke-width="2.6"/>
+    <path d="M129 63.5 H135 L129 69.5 H135" stroke="#fff0b8" stroke-width="2.2"/>
+  </g>
+  <circle cx="512" cy="475" r="90.6" fill="#fff0b8" mask="url(#crescent)"/>
+</svg>
