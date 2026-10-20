@@ -17,10 +17,14 @@ final class SettingsTests {
         expectEqual(DisplaySettings.normalizedIdleMinutes(5), 5)
         expectEqual(DisplaySettings.normalizedIdleMinutes(7), 10)
         expectEqual(DisplaySettings.normalizedIdleMinutes(0), 5)
-        expectEqual(DisplaySettings.normalizedIdleMinutes(90), 60)
+        expectEqual(DisplaySettings.normalizedIdleMinutes(40), 45)
+        expectEqual(DisplaySettings.normalizedIdleMinutes(50), 60)
+        expectEqual(DisplaySettings.normalizedIdleMinutes(90), 90)
+        expectEqual(DisplaySettings.normalizedIdleMinutes(120), 120)
+        expectEqual(DisplaySettings.normalizedIdleMinutes(200), 120)
         var settings = DisplaySettings()
         settings.idleMinutes = 33
-        expectEqual(settings.idleMinutes, 40)
+        expectEqual(settings.idleMinutes, 45)
     }
 
     func testSaveAndLoadRoundTrip() throws {
