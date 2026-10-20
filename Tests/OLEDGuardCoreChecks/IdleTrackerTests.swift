@@ -1,9 +1,8 @@
 import CoreGraphics
 import Foundation
-import XCTest
-@testable import OLEDGuardCore
+import OLEDGuardCore
 
-final class IdleTrackerTests: XCTestCase {
+final class IdleTrackerTests {
     // 左: A(1920x1200)、右: B(1920x1200)、その右: C(2560x1440)
     private let frameA = CGRect(x: 0, y: 0, width: 1920, height: 1200)
     private let frameB = CGRect(x: 1920, y: 0, width: 1920, height: 1200)
@@ -28,27 +27,27 @@ final class IdleTrackerTests: XCTestCase {
 
     func testFiresOnlyAfterTimeout() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(299)), [])
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(299)), [])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
     }
 
     func testDoesNotFireAgainWhileShowing() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
-        XCTAssertTrue(tracker.isShowingOverlay("A"))
-        XCTAssertEqual(tracker.tick(now: at(1000)), [])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
+        expectTrue(tracker.isShowingOverlay("A"))
+        expectEqual(tracker.tick(now: at(1000)), [])
     }
 
     func testDisabledDisplayNeverFires() {
         let tracker = makeTracker([display("A", frameA, enabled: false, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(10_000)), [])
-        XCTAssertNil(tracker.remainingTime(for: "A", now: at(10)))
+        expectEqual(tracker.tick(now: at(10_000)), [])
+        expectNil(tracker.remainingTime(for: "A", now: at(10)))
     }
 
     func testRemainingTime() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.remainingTime(for: "A", now: at(100)), 200)
-        XCTAssertEqual(tracker.remainingTime(for: "A", now: at(400)), 0)
+        expectEqual(tracker.remainingTime(for: "A", now: at(100)), 200)
+        expectEqual(tracker.remainingTime(for: "A", now: at(400)), 0)
     }
 
     // MARK: - リセット
@@ -57,8 +56,8 @@ final class IdleTrackerTests: XCTestCase {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         tracker.mouseMoved(to: CGPoint(x: 100, y: 100), now: at(0))
         tracker.mouseMoved(to: CGPoint(x: 120, y: 100), now: at(200))
-        XCTAssertEqual(tracker.tick(now: at(300)), [])
-        XCTAssertEqual(tracker.tick(now: at(500)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), [])
+        expectEqual(tracker.tick(now: at(500)), ["A"])
     }
 
     func testStillCursorOnTargetCountsAsIdle() {
@@ -66,37 +65,37 @@ final class IdleTrackerTests: XCTestCase {
         for second in stride(from: 0.0, through: 300.0, by: 1.0) {
             tracker.mouseMoved(to: CGPoint(x: 100, y: 100), now: at(second))
         }
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
     }
 
     func testFirstSampleIsNotMovement() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         tracker.mouseMoved(to: CGPoint(x: 100, y: 100), now: at(200))
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
     }
 
     func testClickOnTargetResets() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         tracker.mouseClicked(at: CGPoint(x: 10, y: 10), now: at(250))
-        XCTAssertEqual(tracker.tick(now: at(300)), [])
-        XCTAssertEqual(tracker.tick(now: at(550)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), [])
+        expectEqual(tracker.tick(now: at(550)), ["A"])
     }
 
     func testDismissRestartsTimer() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
         tracker.overlayDismissed("A", now: at(400))
-        XCTAssertFalse(tracker.isShowingOverlay("A"))
-        XCTAssertEqual(tracker.tick(now: at(699)), [])
-        XCTAssertEqual(tracker.tick(now: at(700)), ["A"])
+        expectFalse(tracker.isShowingOverlay("A"))
+        expectEqual(tracker.tick(now: at(699)), [])
+        expectEqual(tracker.tick(now: at(700)), ["A"])
     }
 
     func testActivityIsIgnoredWhileShowing() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
         tracker.mouseClicked(at: CGPoint(x: 10, y: 10), now: at(350))
-        XCTAssertTrue(tracker.isShowingOverlay("A"))
-        XCTAssertNil(tracker.remainingTime(for: "A", now: at(350)))
+        expectTrue(tracker.isShowingOverlay("A"))
+        expectNil(tracker.remainingTime(for: "A", now: at(350)))
     }
 
     // MARK: - 複数モニター
@@ -109,7 +108,7 @@ final class IdleTrackerTests: XCTestCase {
             tracker.mouseMoved(to: CGPoint(x: 2000 + second, y: 100), now: at(second))
             tracker.mouseClicked(at: CGPoint(x: 2000 + second, y: 100), now: at(second))
         }
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
     }
 
     func testIndependentTimersPerDisplay() {
@@ -119,26 +118,26 @@ final class IdleTrackerTests: XCTestCase {
             display("C", frameC, timeout: 300),
         ])
         tracker.mouseClicked(at: CGPoint(x: 4000, y: 100), now: at(200)) // C を触る
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
-        XCTAssertEqual(tracker.tick(now: at(500)), ["C"])
-        XCTAssertEqual(tracker.tick(now: at(600)), ["B"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(500)), ["C"])
+        expectEqual(tracker.tick(now: at(600)), ["B"])
     }
 
     func testMovingAcrossDisplaysResetsOnlyDestination() {
         let tracker = makeTracker([display("A", frameA, timeout: 300), display("B", frameB, timeout: 300)])
         tracker.mouseMoved(to: CGPoint(x: 100, y: 100), now: at(0))
         tracker.mouseMoved(to: CGPoint(x: 2500, y: 100), now: at(100)) // A から B へ移動
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
-        XCTAssertEqual(tracker.tick(now: at(400)), ["B"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(400)), ["B"])
     }
 
     func testDisplayContainingPointOnSharedEdge() {
         let tracker = makeTracker([display("A", frameA), display("B", frameB)])
-        XCTAssertEqual(tracker.displayUUID(containing: CGPoint(x: 1920, y: 100)), "B")
-        XCTAssertEqual(tracker.displayUUID(containing: CGPoint(x: 1919.5, y: 100)), "A")
+        expectEqual(tracker.displayUUID(containing: CGPoint(x: 1920, y: 100)), "B")
+        expectEqual(tracker.displayUUID(containing: CGPoint(x: 1919.5, y: 100)), "A")
         // 上端ちょうど(contains では外れる位置)
-        XCTAssertEqual(tracker.displayUUID(containing: CGPoint(x: 100, y: 1200)), "A")
-        XCTAssertNil(tracker.displayUUID(containing: CGPoint(x: 100, y: 5000)))
+        expectEqual(tracker.displayUUID(containing: CGPoint(x: 100, y: 1200)), "A")
+        expectNil(tracker.displayUUID(containing: CGPoint(x: 100, y: 5000)))
     }
 
     // MARK: - 一時停止
@@ -146,18 +145,18 @@ final class IdleTrackerTests: XCTestCase {
     func testPauseStopsAndResumeRestarts() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         tracker.setPaused(true, now: at(100))
-        XCTAssertEqual(tracker.tick(now: at(1000)), [])
-        XCTAssertNil(tracker.remainingTime(for: "A", now: at(1000)))
+        expectEqual(tracker.tick(now: at(1000)), [])
+        expectNil(tracker.remainingTime(for: "A", now: at(1000)))
         tracker.setPaused(false, now: at(1000))
-        XCTAssertEqual(tracker.tick(now: at(1299)), [])
-        XCTAssertEqual(tracker.tick(now: at(1300)), ["A"])
+        expectEqual(tracker.tick(now: at(1299)), [])
+        expectEqual(tracker.tick(now: at(1300)), ["A"])
     }
 
     func testResetAll() {
         let tracker = makeTracker([display("A", frameA, timeout: 300), display("B", frameB, timeout: 300)])
         tracker.resetAll(now: at(250))
-        XCTAssertEqual(tracker.tick(now: at(500)), [])
-        XCTAssertEqual(tracker.tick(now: at(550)), ["A", "B"])
+        expectEqual(tracker.tick(now: at(500)), [])
+        expectEqual(tracker.tick(now: at(550)), ["A", "B"])
     }
 
     // MARK: - 設定変更
@@ -165,35 +164,35 @@ final class IdleTrackerTests: XCTestCase {
     func testChangingTimeoutRestarts() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         tracker.configure([display("A", frameA, timeout: 600)], now: at(200))
-        XCTAssertEqual(tracker.tick(now: at(700)), [])
-        XCTAssertEqual(tracker.tick(now: at(800)), ["A"])
+        expectEqual(tracker.tick(now: at(700)), [])
+        expectEqual(tracker.tick(now: at(800)), ["A"])
     }
 
     func testEnablingRestarts() {
         let tracker = makeTracker([display("A", frameA, enabled: false, timeout: 300)])
         tracker.configure([display("A", frameA, enabled: true, timeout: 300)], now: at(1000))
-        XCTAssertEqual(tracker.tick(now: at(1200)), [])
-        XCTAssertEqual(tracker.tick(now: at(1300)), ["A"])
+        expectEqual(tracker.tick(now: at(1200)), [])
+        expectEqual(tracker.tick(now: at(1300)), ["A"])
     }
 
     func testFrameChangeKeepsTimer() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
         // モニターの並び順を変えた
         tracker.configure([display("A", frameB, timeout: 300)], now: at(200))
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
     }
 
     func testUnchangedConfigureKeepsShowingState() {
         let tracker = makeTracker([display("A", frameA, timeout: 300)])
-        XCTAssertEqual(tracker.tick(now: at(300)), ["A"])
+        expectEqual(tracker.tick(now: at(300)), ["A"])
         tracker.configure([display("A", frameA, timeout: 300)], now: at(310))
-        XCTAssertTrue(tracker.isShowingOverlay("A"))
+        expectTrue(tracker.isShowingOverlay("A"))
     }
 
     func testDisconnectedDisplayIsDropped() {
         let tracker = makeTracker([display("A", frameA, timeout: 300), display("B", frameB, timeout: 300)])
         tracker.configure([display("A", frameA, timeout: 300)], now: at(100))
-        XCTAssertEqual(tracker.tick(now: at(1000)), ["A"])
-        XCTAssertNil(tracker.displayUUID(containing: CGPoint(x: 2500, y: 100)))
+        expectEqual(tracker.tick(now: at(1000)), ["A"])
+        expectNil(tracker.displayUUID(containing: CGPoint(x: 2500, y: 100)))
     }
 }

@@ -17,10 +17,12 @@ let package = Package(
             path: "Sources/OLEDGuard",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        .testTarget(
-            name: "OLEDGuardCoreTests",
+        // ユニットテスト。コマンドラインツールには XCTest がないため、実行ファイルとして動かす
+        // (make test = swift run OLEDGuardCoreChecks)
+        .executableTarget(
+            name: "OLEDGuardCoreChecks",
             dependencies: ["OLEDGuardCore"],
-            path: "Tests/OLEDGuardCoreTests",
+            path: "Tests/OLEDGuardCoreChecks",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
