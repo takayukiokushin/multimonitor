@@ -1,0 +1,47 @@
+import Combine
+import Foundation
+import OLEDGuardCore
+
+/// 設定を保持し、変更されるたびに JSON へ保存する。
+@MainActor
+final class SettingsStore: ObservableObject {
+    @Published var settings: AppSettings {
+        didSet {
+            if settings != oldValue { save() }
+        }
+    }
+    @Published private(set) var saveError: String?
+
+    private let file: SettingsFile
+
+    init(file: SettingsFile = SettingsFile()) {
+        self.file = file
+        self.settings = file.load()
+    }
+
+    func displaySettings(for uuid: String) -> DisplaySettings {
+        settings.displays[uuid] ?? DisplaySettings()
+    }
+
+    /// 接続中モニターの名前を、すでに設定があるものだけ記録しておく(未接続時の表示用)。
+    func noteConnected(_ displays: [DisplayInfo]) {
+        var updated = settings
+        for display in displays where updated.displays[display.uuid] != nil {
+            updated.displays[display.uuid]?.lastKnownName = display.name
+        }
+        settings = updated
+    }
+
+    func removeSettings(for uuid: String) {
+        settings.displays[uuid] = nil
+    }
+
+    private func save() {
+        do {
+            try file.save(settings)
+            saveError = nil
+        } catch {
+            saveError = "設定を保存できませんでした: \(error.localizedDescription)"
+        }
+    }
+}

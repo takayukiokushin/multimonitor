@@ -6,11 +6,15 @@ import SwiftUI
 final class SettingsWindowController {
     private let displayManager: DisplayManager
     private let appState: AppState
+    private let store: SettingsStore
+    private let loginItem: LoginItemController
     private var window: NSWindow?
 
-    init(displayManager: DisplayManager, appState: AppState) {
+    init(displayManager: DisplayManager, appState: AppState, store: SettingsStore, loginItem: LoginItemController) {
         self.displayManager = displayManager
         self.appState = appState
+        self.store = store
+        self.loginItem = loginItem
     }
 
     func show() {
@@ -18,15 +22,18 @@ final class SettingsWindowController {
             let root = SettingsView()
                 .environmentObject(displayManager)
                 .environmentObject(appState)
+                .environmentObject(store)
+                .environmentObject(loginItem)
             let hosting = NSHostingController(rootView: root)
             let window = NSWindow(contentViewController: hosting)
             window.title = "OLEDGuard 設定"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
-            window.setContentSize(NSSize(width: 560, height: 520))
+            window.setContentSize(NSSize(width: 600, height: 680))
             window.center()
             self.window = window
         }
+        loginItem.refresh()
         // メニューバー常駐アプリは非アクティブなので、前面に出すために明示的にアクティブにする
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)

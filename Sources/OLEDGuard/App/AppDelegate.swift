@@ -1,11 +1,15 @@
 import AppKit
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var displayManager: DisplayManager!
     private var appState: AppState!
+    private var settingsStore: SettingsStore!
+    private var loginItem: LoginItemController!
     private var settingsWindow: SettingsWindowController!
+    private var cancellables: Set<AnyCancellable> = []
 
     private var pauseItem: NSMenuItem!
 
@@ -15,7 +19,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         displayManager = DisplayManager()
         appState = AppState()
-        settingsWindow = SettingsWindowController(displayManager: displayManager, appState: appState)
+        settingsStore = SettingsStore()
+        loginItem = LoginItemController()
+        settingsWindow = SettingsWindowController(
+            displayManager: displayManager,
+            appState: appState,
+            store: settingsStore,
+            loginItem: loginItem
+        )
+
+        // 接続中モニターの名前を設定に記録しておく(未接続になったときの表示用)
+        displayManager.$displays
+            .sink { [weak self] displays in
+                MainActor.assumeIsolated {
+                    self?.settingsStore.noteConnected(displays)
+                }
+            }
+            .store(in: &cancellables)
 
         setUpStatusItem()
     }
