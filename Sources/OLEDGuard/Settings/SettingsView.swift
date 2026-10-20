@@ -10,6 +10,7 @@ struct SettingsView: View {
     @EnvironmentObject private var overlays: OverlayManager
     @EnvironmentObject private var idleMonitor: IdleMonitor
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var thumbnails: ThumbnailStore
 
     private var disconnectedUUIDs: [String] {
         let connected = Set(displayManager.displays.map(\.uuid))
@@ -63,6 +64,7 @@ struct SettingsView: View {
                         fileCheckToken: store.fileCheckToken,
                         mediaError: store.mediaErrors[display.uuid],
                         status: status(for: display.uuid),
+                        thumbnail: thumbnail(for: display.uuid),
                         onTest: { overlays.showTest(uuid: display.uuid) }
                     )
                     DisclosureGroup("モニター情報") {
@@ -87,7 +89,16 @@ struct SettingsView: View {
         .frame(minWidth: 560, minHeight: 420)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             store.recheckFiles()
+            thumbnails.invalidateAll()
         }
+    }
+
+    private func thumbnail(for uuid: String) -> NSImage? {
+        guard let url = store.displaySettings(for: uuid).mediaURL,
+              FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
+            return nil
+        }
+        return thumbnails.thumbnail(for: url)
     }
 
     private func status(for uuid: String) -> String {
@@ -128,6 +139,7 @@ private struct DisplaySettingsEditor: View {
     let fileCheckToken: Int
     let mediaError: String?
     let status: String
+    let thumbnail: NSImage?
     let onTest: () -> Void
 
     var body: some View {
@@ -144,6 +156,14 @@ private struct DisplaySettingsEditor: View {
 
         LabeledContent("ファイル") {
             HStack {
+                if let thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 80, height: 50)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
                 Text(settings.mediaURL?.lastPathComponent ?? "未選択")
                     .lineLimit(1)
                     .truncationMode(.middle)

@@ -10,6 +10,7 @@ final class SettingsWindowController {
     private let loginItem: LoginItemController
     private let overlays: OverlayManager
     private let idleMonitor: IdleMonitor
+    private let thumbnails = ThumbnailStore()
     private var window: NSWindow?
 
     init(displayManager: DisplayManager, appState: AppState, store: SettingsStore,
@@ -31,6 +32,7 @@ final class SettingsWindowController {
                 .environmentObject(loginItem)
                 .environmentObject(overlays)
                 .environmentObject(idleMonitor)
+                .environmentObject(thumbnails)
             let hosting = NSHostingController(rootView: root)
             let window = NSWindow(contentViewController: hosting)
             window.title = "OLEDGuard 設定"
