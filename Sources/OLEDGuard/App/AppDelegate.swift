@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsStore: SettingsStore!
     private var loginItem: LoginItemController!
     private var overlayManager: OverlayManager!
+    private var idleMonitor: IdleMonitor!
     private var settingsWindow: SettingsWindowController!
     private var cancellables: Set<AnyCancellable> = []
 
@@ -27,12 +28,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayManager.onMediaError = { [weak self] _, isTest in
             if isTest { self?.settingsWindow.show() }
         }
+        idleMonitor = IdleMonitor(
+            displayManager: displayManager,
+            store: settingsStore,
+            appState: appState,
+            overlays: overlayManager
+        )
+        // 待ち受けが閉じたら、そのモニターの無操作タイマーを最初から数え直す
+        overlayManager.onDismiss = { [weak self] uuid, _ in
+            self?.idleMonitor.overlayDismissed(uuid)
+        }
         settingsWindow = SettingsWindowController(
             displayManager: displayManager,
             appState: appState,
             store: settingsStore,
             loginItem: loginItem,
-            overlays: overlayManager
+            overlays: overlayManager,
+            idleMonitor: idleMonitor
         )
 
         // 接続中モニターの名前を設定に記録しておく(未接続になったときの表示用)
@@ -45,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         setUpStatusItem()
+        idleMonitor.start()
     }
 
     private func setUpStatusItem() {

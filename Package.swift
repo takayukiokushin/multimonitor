@@ -17,5 +17,11 @@ let package = Package(
             path: "Sources/OLEDGuard",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "OLEDGuardCoreTests",
+            dependencies: ["OLEDGuardCore"],
+            path: "Tests/OLEDGuardCoreTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

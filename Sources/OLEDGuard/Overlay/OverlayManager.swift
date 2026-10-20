@@ -15,7 +15,7 @@ final class OverlayManager: ObservableObject {
     /// 待ち受けを表示中のモニター(UUID)
     @Published private(set) var visibleUUIDs: Set<String> = []
 
-    /// 待ち受けが閉じたとき(無操作タイマーのやり直しに使う)
+    /// 待ち受けが閉じたとき、または出せなかったとき(無操作タイマーのやり直しに使う)
     var onDismiss: (@MainActor (String, DismissReason) -> Void)?
     /// 読み込みに失敗したとき。isTest は「今すぐテスト表示」からかどうか
     var onMediaError: (@MainActor (String, Bool) -> Void)?
@@ -69,6 +69,7 @@ final class OverlayManager: ObservableObject {
                 // 読み込み中に切断・配置変更されていたら、最新の位置で出す
                 guard let current = displayManager.display(withUUID: uuid) else {
                     if case .video(let playback) = content { playback.stop() }
+                    onDismiss?(uuid, .system)
                     return
                 }
                 store.clearMediaError(for: uuid)
@@ -76,6 +77,8 @@ final class OverlayManager: ObservableObject {
             case .failure(let error):
                 store.setMediaError(error.localizedDescription, for: uuid)
                 onMediaError?(uuid, isTest)
+                // 出せなかったので、無操作タイマーは最初から数え直す
+                onDismiss?(uuid, .system)
             }
         }
     }

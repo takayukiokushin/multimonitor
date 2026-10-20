@@ -8,6 +8,8 @@ struct SettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var loginItem: LoginItemController
     @EnvironmentObject private var overlays: OverlayManager
+    @EnvironmentObject private var idleMonitor: IdleMonitor
+    @EnvironmentObject private var appState: AppState
 
     private var disconnectedUUIDs: [String] {
         let connected = Set(displayManager.displays.map(\.uuid))
@@ -16,6 +18,12 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            if DebugOptions.isShortened {
+                Section {
+                    WarningLabel("デバッグ: 待ち受けまでの時間を短縮中(1分 = \(Int(DebugOptions.secondsPerMinute))秒)")
+                }
+            }
+
             Section("全般") {
                 Toggle("ログイン時に自動起動", isOn: Binding(
                     get: { loginItem.isEnabled },
@@ -54,6 +62,7 @@ struct SettingsView: View {
                         settings: binding(for: display),
                         fileCheckToken: store.fileCheckToken,
                         mediaError: store.mediaErrors[display.uuid],
+                        status: status(for: display.uuid),
                         onTest: { overlays.showTest(uuid: display.uuid) }
                     )
                     DisclosureGroup("モニター情報") {
@@ -81,6 +90,22 @@ struct SettingsView: View {
         }
     }
 
+    private func status(for uuid: String) -> String {
+        if overlays.visibleUUIDs.contains(uuid) {
+            return "待ち受けを表示中"
+        }
+        guard store.displaySettings(for: uuid).isEnabled else {
+            return "無効"
+        }
+        if appState.isPaused {
+            return "一時停止中"
+        }
+        guard let seconds = idleMonitor.remainingSeconds[uuid] else {
+            return "判定を停止中"
+        }
+        return String(format: "待ち受けまで あと %ld:%02ld", seconds / 60, seconds % 60)
+    }
+
     /// 書き込み時にモニター名も記録して、未接続になったときに名前で表示できるようにする
     private func binding(for display: DisplayInfo) -> Binding<DisplaySettings> {
         Binding(
@@ -102,10 +127,13 @@ private struct DisplaySettingsEditor: View {
     @Binding var settings: DisplaySettings
     let fileCheckToken: Int
     let mediaError: String?
+    let status: String
     let onTest: () -> Void
 
     var body: some View {
         Toggle("待ち受けを使う", isOn: $settings.isEnabled)
+
+        LabeledContent("状態", value: status)
 
         Picker("待ち受けまでの時間", selection: $settings.idleMinutes) {
             ForEach(DisplaySettings.idleMinuteChoices, id: \.self) { minutes in
