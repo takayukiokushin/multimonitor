@@ -78,10 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let testItem = NSMenuItem(title: "今すぐテスト表示", action: #selector(testOverlay), keyEquivalent: "")
-        testItem.target = self
-        menu.addItem(testItem)
-
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -98,25 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         settingsWindow.show()
-    }
-
-    /// 「待ち受けを使う」がオンの接続中モニターすべてに、待ち受けを表示する。
-    @objc private func testOverlay() {
-        let targets = displayManager.displays.filter {
-            settingsStore.displaySettings(for: $0.uuid).isEnabled
-        }
-        guard !targets.isEmpty else {
-            NSApp.activate()
-            let alert = NSAlert()
-            alert.messageText = "待ち受けを使うモニターがありません"
-            alert.informativeText = "設定画面で、モニターの「待ち受けを使う」をオンにしてください。"
-            alert.runModal()
-            settingsWindow.show()
-            return
-        }
-        for display in targets {
-            overlayManager.show(display: display, isTest: true)
-        }
     }
 
     private func updatePauseItem() {
