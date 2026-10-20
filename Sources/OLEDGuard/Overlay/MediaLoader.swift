@@ -8,13 +8,14 @@ enum OverlayContent {
     /// ファイル未指定・見つからないときは黒画面
     case black
     case image(CGImage)
+    case video(VideoPlayback)
 }
 
 enum MediaLoadError: LocalizedError {
     case unsupportedFormat(String)
     case unreadableImage(String)
     case unreadablePDF(String)
-    case videoNotSupportedYet
+    case unplayableVideo(String, String?)
 
     var errorDescription: String? {
         switch self {
@@ -24,14 +25,18 @@ enum MediaLoadError: LocalizedError {
             return "画像を読み込めませんでした: \(name)"
         case .unreadablePDF(let name):
             return "PDF を読み込めませんでした: \(name)"
-        case .videoNotSupportedYet:
-            return "動画はまだ表示できません(ステップ4で対応)"
+        case .unplayableVideo(let name, let reason):
+            if let reason {
+                return "動画を再生できませんでした: \(name)(\(reason))"
+            }
+            return "動画を再生できませんでした: \(name)"
         }
     }
 }
 
 enum MediaLoader {
     /// 設定に従って中身を用意する。重い読み込みはバックグラウンドで行う。
+    @MainActor
     static func load(settings: DisplaySettings, targetPixelSize: CGSize) async -> Result<OverlayContent, Error> {
         guard let url = settings.mediaURL,
               FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
@@ -44,15 +49,22 @@ enum MediaLoader {
 
         switch kind {
         case .image:
-            return await Task.detached(priority: .userInitiated) {
-                Result { OverlayContent.image(try MediaLoader.loadImage(url: url, targetPixelSize: targetPixelSize, mode: mode)) }
+            // バックグラウンドからは CGImage だけを受け渡す
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try MediaLoader.loadImage(url: url, targetPixelSize: targetPixelSize, mode: mode) }
             }.value
+            return result.map { OverlayContent.image($0) }
         case .pdf:
-            return await Task.detached(priority: .userInitiated) {
-                Result { OverlayContent.image(try MediaLoader.renderPDF(url: url, targetPixelSize: targetPixelSize, mode: mode)) }
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try MediaLoader.renderPDF(url: url, targetPixelSize: targetPixelSize, mode: mode) }
             }.value
+            return result.map { OverlayContent.image($0) }
         case .video:
-            return .failure(MediaLoadError.videoNotSupportedYet)
+            do {
+                return .success(.video(try await VideoPlayback.prepare(url: url)))
+            } catch {
+                return .failure(error)
+            }
         }
     }
 

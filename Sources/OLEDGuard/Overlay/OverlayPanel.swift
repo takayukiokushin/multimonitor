@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import OLEDGuardCore
 
@@ -31,12 +32,13 @@ final class OverlayPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// 待ち受けの中身。背景は黒で、画像を CALayer で表示する。
+/// 待ち受けの中身。背景は黒で、画像は CALayer、動画は AVPlayerLayer で表示する。
 final class OverlayContentView: NSView {
     /// クリック(ボタンを離したとき)で呼ばれる
     var onClick: (@MainActor () -> Void)?
 
     private let mediaLayer = CALayer()
+    private var playerLayer: AVPlayerLayer?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -59,6 +61,23 @@ final class OverlayContentView: NSView {
         mediaLayer.contentsGravity = mode == .fill ? .resizeAspectFill : .resizeAspect
         mediaLayer.masksToBounds = true
         CATransaction.commit()
+    }
+
+    func setVideo(_ player: AVPlayer, mode: ScaleMode) {
+        detachVideo()
+        let videoLayer = AVPlayerLayer(player: player)
+        videoLayer.frame = bounds
+        videoLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        videoLayer.backgroundColor = NSColor.black.cgColor
+        videoLayer.videoGravity = mode == .fill ? .resizeAspectFill : .resizeAspect
+        layer?.addSublayer(videoLayer)
+        playerLayer = videoLayer
+    }
+
+    func detachVideo() {
+        playerLayer?.player = nil
+        playerLayer?.removeFromSuperlayer()
+        playerLayer = nil
     }
 
     // 非アクティブなアプリのウィンドウでも、最初のクリックを受け取る

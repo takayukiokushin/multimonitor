@@ -25,6 +25,9 @@ final class OverlayManager: ObservableObject {
     private var panels: [String: OverlayPanel] = [:]
     /// 読み込み中のモニターと、その読み込みの識別子(途中で閉じられたら結果を捨てる)
     private var pendingLoads: [String: UUID] = [:]
+    private var playbacks: [String: VideoPlayback] = [:]
+    /// 動画の再生中だけ動かす、失敗の見張り
+    private var healthTimer: Timer?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
     init(displayManager: DisplayManager, store: SettingsStore) {
@@ -54,13 +57,20 @@ final class OverlayManager: ObservableObject {
 
         Task {
             let result = await MediaLoader.load(settings: settings, targetPixelSize: target)
-            guard pendingLoads[uuid] == token else { return }
+            guard pendingLoads[uuid] == token else {
+                // 読み込み中に閉じられた。用意した動画は捨てる
+                if case .success(.video(let playback)) = result { playback.stop() }
+                return
+            }
             pendingLoads[uuid] = nil
 
             switch result {
             case .success(let content):
                 // 読み込み中に切断・配置変更されていたら、最新の位置で出す
-                guard let current = displayManager.display(withUUID: uuid) else { return }
+                guard let current = displayManager.display(withUUID: uuid) else {
+                    if case .video(let playback) = content { playback.stop() }
+                    return
+                }
                 store.clearMediaError(for: uuid)
                 present(content, on: current, mode: settings.scaleMode)
             case .failure(let error):
@@ -73,7 +83,10 @@ final class OverlayManager: ObservableObject {
     func dismiss(uuid: String, reason: DismissReason) {
         let wasActive = isActive(uuid)
         pendingLoads[uuid] = nil
+        playbacks.removeValue(forKey: uuid)?.stop()
+        updateHealthTimer()
         if let panel = panels.removeValue(forKey: uuid) {
+            (panel.contentView as? OverlayContentView)?.detachVideo()
             panel.orderOut(nil)
             panel.contentView = nil
             panel.close()
@@ -98,6 +111,11 @@ final class OverlayManager: ObservableObject {
             view.setImage(nil, mode: mode)
         case .image(let image):
             view.setImage(image, mode: mode)
+        case .video(let playback):
+            view.setImage(nil, mode: mode)
+            view.setVideo(playback.player, mode: mode)
+            playbacks[display.uuid] = playback
+            playback.play()
         }
         let uuid = display.uuid
         view.onClick = { [weak self] in
@@ -108,6 +126,33 @@ final class OverlayManager: ObservableObject {
 
         panels[uuid] = panel
         visibleUUIDs.insert(uuid)
+        updateHealthTimer()
+    }
+
+    /// 再生途中で失敗した動画は、黒画面のまま残さずに閉じて警告を出す。
+    private func checkPlaybackHealth() {
+        for (uuid, playback) in playbacks {
+            guard let failure = playback.failureDescription else { continue }
+            dismiss(uuid: uuid, reason: .system)
+            store.setMediaError("動画の再生に失敗しました(\(failure))", for: uuid)
+            onMediaError?(uuid, false)
+        }
+    }
+
+    private func updateHealthTimer() {
+        if playbacks.isEmpty {
+            healthTimer?.invalidate()
+            healthTimer = nil
+        } else if healthTimer == nil {
+            let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.checkPlaybackHealth()
+                }
+            }
+            timer.tolerance = 0.5
+            RunLoop.main.add(timer, forMode: .common)
+            healthTimer = timer
+        }
     }
 
     /// スリープ・画面ロック・ユーザー切り替え・ディスプレイ構成の変更で、すべて閉じる。
