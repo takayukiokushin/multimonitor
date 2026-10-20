@@ -8,9 +8,6 @@ struct SettingsView: View {
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var loginItem: LoginItemController
 
-    /// アプリが前面に戻るたびに増やし、ファイルの有無を確認し直すきっかけにする
-    @State private var fileCheckToken = 0
-
     private var disconnectedUUIDs: [String] {
         let connected = Set(displayManager.displays.map(\.uuid))
         return store.settings.displays.keys.filter { !connected.contains($0) }.sorted()
@@ -54,7 +51,7 @@ struct SettingsView: View {
                 Section("モニター \(index + 1): \(display.name)\(display.isMain ? "(メイン)" : "")") {
                     DisplaySettingsEditor(
                         settings: binding(for: display),
-                        fileCheckToken: fileCheckToken
+                        fileCheckToken: store.fileCheckToken
                     )
                     DisclosureGroup("モニター情報") {
                         DisplayInfoDetails(display: display)
@@ -77,7 +74,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(minWidth: 560, minHeight: 420)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            fileCheckToken += 1
+            store.recheckFiles()
         }
     }
 

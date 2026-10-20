@@ -11,6 +11,9 @@ final class SettingsStore: ObservableObject {
         }
     }
     @Published private(set) var saveError: String?
+    /// 増えるたびに設定画面がファイルの有無を確認し直す。
+    /// (@State は SwiftUI のマクロで、コマンドラインツールだけの環境ではビルドできないため使わない)
+    @Published private(set) var fileCheckToken = 0
 
     private let file: SettingsFile
 
@@ -34,6 +37,10 @@ final class SettingsStore: ObservableObject {
 
     func removeSettings(for uuid: String) {
         settings.displays[uuid] = nil
+    }
+
+    func recheckFiles() {
+        fileCheckToken += 1
     }
 
     private func save() {
