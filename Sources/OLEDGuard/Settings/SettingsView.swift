@@ -64,7 +64,6 @@ struct SettingsView: View {
                         fileCheckToken: store.fileCheckToken,
                         mediaError: store.mediaErrors[display.uuid],
                         status: status(for: display.uuid),
-                        thumbnail: thumbnail(for: display.uuid),
                         onTest: { overlays.showTest(uuid: display.uuid) }
                     )
                     DisclosureGroup("モニター情報") {
@@ -93,14 +92,6 @@ struct SettingsView: View {
         }
     }
 
-    private func thumbnail(for uuid: String) -> NSImage? {
-        guard let url = store.displaySettings(for: uuid).mediaURL,
-              FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
-            return nil
-        }
-        return thumbnails.thumbnail(for: url)
-    }
-
     private func status(for uuid: String) -> String {
         if overlays.visibleUUIDs.contains(uuid) {
             return "待ち受けを表示中"
@@ -124,7 +115,7 @@ struct SettingsView: View {
             set: { newValue in
                 var value = newValue
                 value.lastKnownName = display.name
-                if value.mediaPath != store.displaySettings(for: display.uuid).mediaPath {
+                if value.mediaSources != store.displaySettings(for: display.uuid).mediaSources {
                     store.clearMediaError(for: display.uuid)
                 }
                 store.settings.displays[display.uuid] = value
@@ -135,14 +126,17 @@ struct SettingsView: View {
 
 /// モニター1枚分の設定項目。
 private struct DisplaySettingsEditor: View {
+    @EnvironmentObject private var thumbnails: ThumbnailStore
     @Binding var settings: DisplaySettings
     let fileCheckToken: Int
     let mediaError: String?
     let status: String
-    let thumbnail: NSImage?
     let onTest: () -> Void
 
     var body: some View {
+        let _ = fileCheckToken
+        let candidateCount = MediaLibrary.candidates(for: settings.mediaSources).count
+
         Toggle("待ち受けを使う", isOn: $settings.isEnabled)
 
         LabeledContent("状態", value: status)
@@ -154,27 +148,39 @@ private struct DisplaySettingsEditor: View {
         }
         .pickerStyle(.menu)
 
-        LabeledContent("ファイル") {
+        LabeledContent("待ち受けにするファイル") {
             HStack {
-                if let thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 80, height: 50)
-                        .background(Color.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                Text(settings.mediaURL?.lastPathComponent ?? "未選択")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(settings.mediaURL == nil ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.primary)
-                    .help(settings.mediaPath ?? "")
-                Button("選択…") { chooseFile() }
-                if settings.mediaPath != nil {
-                    Button("クリア") { settings.mediaPath = nil }
-                }
+                Text(settings.mediaSources.isEmpty ? "未登録" : "\(candidateCount) ファイル")
+                    .foregroundStyle(.secondary)
+                Button("ファイルを追加…") { addFiles() }
+                Button("フォルダを追加…") { addFolder() }
             }
         }
+
+        ForEach(settings.mediaSources, id: \.self) { source in
+            MediaSourceRow(
+                source: source,
+                status: MediaLibrary.status(of: source),
+                thumbnail: thumbnail(for: source),
+                onRemove: { settings.mediaSources.removeAll { $0 == source } }
+            )
+        }
+
+        Picker("選び方", selection: $settings.selectionOrder) {
+            Text("ランダム").tag(SelectionOrder.random)
+            Text("順番(登録順・フォルダ内は名前順)").tag(SelectionOrder.sequential)
+        }
+        .pickerStyle(.menu)
+
+        Toggle("表示中も切り替える", isOn: $settings.slideshowEnabled)
+
+        Picker("切り替える間隔", selection: $settings.slideshowMinutes) {
+            ForEach(DisplaySettings.slideshowMinuteChoices, id: \.self) { minutes in
+                Text("\(minutes) 分").tag(minutes)
+            }
+        }
+        .pickerStyle(.menu)
+        .disabled(!settings.slideshowEnabled)
 
         Picker("表示方法", selection: $settings.scaleMode) {
             Text("フィル(画面全体を覆う)").tag(ScaleMode.fill)
@@ -182,7 +188,7 @@ private struct DisplaySettingsEditor: View {
         }
         .pickerStyle(.menu)
 
-        ForEach(warnings, id: \.self) { message in
+        ForEach(warnings(candidateCount: candidateCount), id: \.self) { message in
             WarningLabel(message)
         }
 
@@ -193,36 +199,140 @@ private struct DisplaySettingsEditor: View {
         }
     }
 
-    private var warnings: [String] {
-        _ = fileCheckToken
+    private func thumbnail(for source: MediaSource) -> NSImage? {
+        guard source.kind == .file,
+              FileManager.default.fileExists(atPath: source.path) else { return nil }
+        return thumbnails.thumbnail(for: source.url)
+    }
+
+    private func warnings(candidateCount: Int) -> [String] {
         var result: [String] = []
         if let mediaError {
-            result.append("前回の表示に失敗しました: \(mediaError)")
+            result.append("表示できなかったファイルがあります: \(mediaError)")
         }
-        if let url = settings.mediaURL {
-            if MediaKind(url: url) == nil {
-                result.append("対応していない形式のファイルです: \(url.lastPathComponent)")
-            } else if !FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
-                result.append("ファイルが見つかりません。移動・名前の変更・削除をしていないか確認してください: \(url.path(percentEncoded: false))")
+        let problems = settings.mediaSources.filter {
+            if case .ok = MediaLibrary.status(of: $0) { return false }
+            return true
+        }
+        if !problems.isEmpty {
+            result.append("見つからない、または使えないファイル・フォルダがあります。移動・名前の変更・削除をしていないか確認してください。")
+        }
+        if settings.isEnabled && candidateCount == 0 {
+            if settings.mediaSources.isEmpty {
+                result.append("ファイルが登録されていません。待ち受けは黒い画面になります。")
+            } else {
+                result.append("使えるファイルが1つもありません。待ち受けは黒い画面になります。")
             }
-        } else if settings.isEnabled {
-            result.append("ファイルが選ばれていません。待ち受けは黒い画面になります。")
         }
         return result
     }
 
-    private func chooseFile() {
+    private func addFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.allowedContentTypes = MediaKind.allExtensions.sorted().compactMap { UTType(filenameExtension: $0) }
-        panel.message = "待ち受けに使う画像(JPEG / PNG / HEIC / PDF)または動画(MP4 / MOV / M4V)を選んでください"
-        if let current = settings.mediaURL {
-            panel.directoryURL = current.deletingLastPathComponent()
+        panel.message = "待ち受けに使う画像(JPEG / PNG / HEIC / PDF)・動画(MP4 / MOV / M4V)を選んでください(複数選択できます)"
+        panel.prompt = "追加"
+        if let last = settings.mediaSources.last {
+            panel.directoryURL = last.kind == .folder ? last.url : last.url.deletingLastPathComponent()
         }
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.mediaPath = url.path(percentEncoded: false)
+        guard panel.runModal() == .OK else { return }
+        add(panel.urls.map { MediaSource(kind: .file, path: $0.path(percentEncoded: false)) })
+    }
+
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = "フォルダを選ぶと、中の画像・動画(サブフォルダは除く)がすべて候補になります"
+        panel.prompt = "追加"
+        guard panel.runModal() == .OK else { return }
+        add(panel.urls.map { MediaSource(kind: .folder, path: $0.path(percentEncoded: false)) })
+    }
+
+    private func add(_ sources: [MediaSource]) {
+        var updated = settings.mediaSources
+        for source in sources where !updated.contains(source) {
+            updated.append(source)
+        }
+        settings.mediaSources = updated
+    }
+}
+
+/// 登録したファイル・フォルダ1件分の行。
+private struct MediaSourceRow: View {
+    let source: MediaSource
+    let status: MediaLibrary.SourceStatus
+    let thumbnail: NSImage?
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                if source.kind == .folder {
+                    Image(systemName: "folder.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                } else if let thumbnail {
+                    Color.black
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: "doc")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 64, height: 40)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(source.url.lastPathComponent)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(isProblem ? Color.orange : Color.secondary)
+            }
+            .help(source.path)
+
+            Spacer()
+
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("登録から外す(ファイル自体は消えません)")
+        }
+    }
+
+    private var isProblem: Bool {
+        if case .ok = status { return false }
+        return true
+    }
+
+    private var detail: String {
+        switch status {
+        case .ok(let count):
+            if source.kind == .folder {
+                return "フォルダ・\(count) ファイル"
+            }
+            switch MediaKind(url: source.url) {
+            case .video: return "動画"
+            case .pdf: return "PDF"
+            default: return "画像"
+            }
+        case .missing:
+            return source.kind == .folder ? "フォルダが見つかりません" : "ファイルが見つかりません"
+        case .unsupported:
+            return "対応していない形式です"
+        case .emptyFolder:
+            return "フォルダに対応ファイルがありません"
         }
     }
 }
@@ -249,8 +359,8 @@ private struct DisconnectedDisplayRow: View {
 
     private var summary: String {
         let state = settings.isEnabled ? "有効" : "無効"
-        let file = settings.mediaURL?.lastPathComponent ?? "ファイル未選択"
-        return "\(state) / \(settings.idleMinutes) 分 / \(file)"
+        let files = settings.mediaSources.isEmpty ? "ファイル未登録" : "\(settings.mediaSources.count) 件登録"
+        return "\(state) / \(settings.idleMinutes) 分 / \(files)"
     }
 }
 

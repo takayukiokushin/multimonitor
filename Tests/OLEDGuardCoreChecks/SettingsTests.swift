@@ -30,7 +30,7 @@ final class SettingsTests {
     func testSaveAndLoadRoundTrip() throws {
         let file = SettingsFile(url: directory.appendingPathComponent("settings.json"))
         var settings = AppSettings()
-        settings.displays["UUID-1"] = DisplaySettings(isEnabled: true, idleMinutes: 15, mediaPath: "/tmp/a.mp4", scaleMode: .fit, lastKnownName: "LG")
+        settings.displays["UUID-1"] = DisplaySettings(isEnabled: true, idleMinutes: 15, mediaSources: [MediaSource(kind: .file, path: "/tmp/a.mp4"), MediaSource(kind: .folder, path: "/tmp/pics")], selectionOrder: .sequential, slideshowEnabled: true, slideshowMinutes: 5, scaleMode: .fit, lastKnownName: "LG", lastShownPath: "/tmp/a.mp4")
         settings.displays["UUID-2"] = DisplaySettings()
         try file.save(settings)
         expectEqual(file.load(), settings)
@@ -53,6 +53,20 @@ final class SettingsTests {
         let json = #"{"displays":{"X":{"isEnabled":true}}}"#
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         expectEqual(settings.displays["X"], DisplaySettings(isEnabled: true))
+    }
+
+    func testLegacyMediaPathBecomesFileSource() throws {
+        let json = #"{"displays":{"X":{"isEnabled":true,"mediaPath":"/a/b.png"}}}"#
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        expectEqual(settings.displays["X"]?.mediaSources, [MediaSource(kind: .file, path: "/a/b.png")])
+        expectEqual(settings.displays["X"]?.selectionOrder, .random)
+        expectEqual(settings.displays["X"]?.slideshowEnabled, false)
+    }
+
+    func testSlideshowMinutesAreNormalizedToChoices() {
+        expectEqual(DisplaySettings.normalizedSlideshowMinutes(1), 1)
+        expectEqual(DisplaySettings.normalizedSlideshowMinutes(2), 5)
+        expectEqual(DisplaySettings.normalizedSlideshowMinutes(500), 120)
     }
 
     func testMediaKind() {

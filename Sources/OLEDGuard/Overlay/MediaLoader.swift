@@ -5,7 +5,7 @@ import PDFKit
 
 /// 待ち受けに表示する中身。
 enum OverlayContent {
-    /// ファイル未指定・見つからないときは黒画面
+    /// 登録ファイルがない・どれも見つからないときは黒画面
     case black
     case image(CGImage)
     case video(VideoPlayback)
@@ -35,17 +35,12 @@ enum MediaLoadError: LocalizedError {
 }
 
 enum MediaLoader {
-    /// 設定に従って中身を用意する。重い読み込みはバックグラウンドで行う。
+    /// ファイル1つ分の中身を用意する。重い読み込みはバックグラウンドで行う。
     @MainActor
-    static func load(settings: DisplaySettings, targetPixelSize: CGSize) async -> Result<OverlayContent, Error> {
-        guard let url = settings.mediaURL,
-              FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
-            return .success(.black)
-        }
+    static func load(url: URL, mode: ScaleMode, targetPixelSize: CGSize) async -> Result<OverlayContent, Error> {
         guard let kind = MediaKind(url: url) else {
             return .failure(MediaLoadError.unsupportedFormat(url.lastPathComponent))
         }
-        let mode = settings.scaleMode
 
         switch kind {
         case .image:

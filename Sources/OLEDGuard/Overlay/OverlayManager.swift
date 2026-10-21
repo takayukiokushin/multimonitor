@@ -26,13 +26,20 @@ final class OverlayManager: ObservableObject {
     /// 読み込み中のモニターと、その読み込みの識別子(途中で閉じられたら結果を捨てる)
     private var pendingLoads: [String: UUID] = [:]
     private var playbacks: [String: VideoPlayback] = [:]
+    /// 表示中に次のファイルへ切り替えるタイマー
+    private var slideshowTimers: [String: Timer] = [:]
+    /// 切り替え用の読み込みの識別子(途中で閉じられたら結果を捨てる)
+    private var pendingAdvances: [String: UUID] = [:]
+    private let secondsPerMinute: TimeInterval
     /// 動画の再生中だけ動かす、失敗の見張り
     private var healthTimer: Timer?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
-    init(displayManager: DisplayManager, store: SettingsStore) {
+    init(displayManager: DisplayManager, store: SettingsStore,
+         secondsPerMinute: TimeInterval = DebugOptions.secondsPerMinute) {
         self.displayManager = displayManager
         self.store = store
+        self.secondsPerMinute = secondsPerMinute
         observeSystemEvents()
     }
 
@@ -56,7 +63,7 @@ final class OverlayManager: ObservableObject {
         pendingLoads[uuid] = token
 
         Task {
-            let result = await MediaLoader.load(settings: settings, targetPixelSize: target)
+            let result = await loadNext(uuid: uuid, settings: settings, targetPixelSize: target)
             guard pendingLoads[uuid] == token else {
                 // 読み込み中に閉じられた。用意した動画は捨てる
                 if case .success(.video(let playback)) = result { playback.stop() }
@@ -72,8 +79,8 @@ final class OverlayManager: ObservableObject {
                     onDismiss?(uuid, .system)
                     return
                 }
-                store.clearMediaError(for: uuid)
                 present(content, on: current, mode: settings.scaleMode)
+                scheduleSlideshow(uuid: uuid, settings: settings)
             case .failure(let error):
                 store.setMediaError(error.localizedDescription, for: uuid)
                 onMediaError?(uuid, isTest)
@@ -83,9 +90,86 @@ final class OverlayManager: ObservableObject {
         }
     }
 
+    /// 登録ファイルから次の1つを選んで読み込む。読み込めないものは飛ばして次を試す。
+    /// 候補が1つもなければ黒画面。すべて読み込めなければ失敗。
+    private func loadNext(uuid: String, settings: DisplaySettings, targetPixelSize: CGSize) async -> Result<OverlayContent, Error> {
+        let candidates = MediaLibrary.candidates(for: settings.mediaSources).map { $0.path(percentEncoded: false) }
+        var generator = SystemRandomNumberGenerator()
+        guard let first = MediaSelector.next(
+            from: candidates,
+            after: store.displaySettings(for: uuid).lastShownPath,
+            order: settings.selectionOrder,
+            using: &generator
+        ) else {
+            store.clearMediaError(for: uuid)
+            return .success(.black)
+        }
+
+        var lastError: Error?
+        let attempts = MediaSelector.attemptOrder(startingWith: first, in: candidates, order: settings.selectionOrder, using: &generator)
+        for path in attempts {
+            let result = await MediaLoader.load(url: URL(fileURLWithPath: path), mode: settings.scaleMode, targetPixelSize: targetPixelSize)
+            switch result {
+            case .success:
+                store.noteShown(path, for: uuid)
+                if let lastError {
+                    // 一部を飛ばした。表示はできたので、警告だけ残す
+                    store.setMediaError(lastError.localizedDescription, for: uuid)
+                } else {
+                    store.clearMediaError(for: uuid)
+                }
+                return result
+            case .failure(let error):
+                lastError = error
+            }
+        }
+        return .failure(lastError ?? MediaLoadError.unsupportedFormat(""))
+    }
+
+    /// 表示中の切り替えが有効で、候補が2つ以上あれば、一定間隔で次のファイルへ切り替える。
+    private func scheduleSlideshow(uuid: String, settings: DisplaySettings) {
+        slideshowTimers.removeValue(forKey: uuid)?.invalidate()
+        guard settings.slideshowEnabled,
+              MediaLibrary.candidates(for: settings.mediaSources).count > 1 else { return }
+        let interval = TimeInterval(settings.slideshowMinutes) * secondsPerMinute
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.advance(uuid: uuid)
+            }
+        }
+        timer.tolerance = min(5, interval * 0.1)
+        RunLoop.main.add(timer, forMode: .common)
+        slideshowTimers[uuid] = timer
+    }
+
+    /// 表示中の待ち受けを、次のファイルに差し替える。用意できるまでは今の表示のまま。
+    private func advance(uuid: String) {
+        guard panels[uuid] != nil, pendingAdvances[uuid] == nil,
+              let display = displayManager.display(withUUID: uuid) else { return }
+        let settings = store.displaySettings(for: uuid)
+        let target = CGSize(width: display.pixelWidth, height: display.pixelHeight)
+        let token = UUID()
+        pendingAdvances[uuid] = token
+
+        Task {
+            let result = await loadNext(uuid: uuid, settings: settings, targetPixelSize: target)
+            guard pendingAdvances[uuid] == token, let panel = panels[uuid],
+                  let view = panel.contentView as? OverlayContentView else {
+                if case .success(.video(let playback)) = result { playback.stop() }
+                return
+            }
+            pendingAdvances[uuid] = nil
+            // 切り替えに失敗したときは、今の表示を続ける(警告は loadNext が残す)
+            guard case .success(let content) = result else { return }
+            show(content, in: view, uuid: uuid, mode: settings.scaleMode)
+        }
+    }
+
     func dismiss(uuid: String, reason: DismissReason) {
         let wasActive = isActive(uuid)
         pendingLoads[uuid] = nil
+        pendingAdvances[uuid] = nil
+        slideshowTimers.removeValue(forKey: uuid)?.invalidate()
         playbacks.removeValue(forKey: uuid)?.stop()
         updateHealthTimer()
         if let panel = panels.removeValue(forKey: uuid) {
@@ -107,8 +191,24 @@ final class OverlayManager: ObservableObject {
     }
 
     private func present(_ content: OverlayContent, on display: DisplayInfo, mode: ScaleMode) {
+        let uuid = display.uuid
         let panel = OverlayPanel(screenFrame: display.frame)
         let view = OverlayContentView(frame: NSRect(origin: .zero, size: display.frame.size))
+        view.onClick = { [weak self] in
+            self?.dismiss(uuid: uuid, reason: .click)
+        }
+        show(content, in: view, uuid: uuid, mode: mode)
+        panel.contentView = view
+        panel.orderFrontRegardless()
+
+        panels[uuid] = panel
+        visibleUUIDs.insert(uuid)
+    }
+
+    /// 中身を表示する。前に表示していた動画は止めて手放す。
+    private func show(_ content: OverlayContent, in view: OverlayContentView, uuid: String, mode: ScaleMode) {
+        playbacks.removeValue(forKey: uuid)?.stop()
+        view.detachVideo()
         switch content {
         case .black:
             view.setImage(nil, mode: mode)
@@ -117,18 +217,9 @@ final class OverlayManager: ObservableObject {
         case .video(let playback):
             view.setImage(nil, mode: mode)
             view.setVideo(playback.player, mode: mode)
-            playbacks[display.uuid] = playback
+            playbacks[uuid] = playback
             playback.play()
         }
-        let uuid = display.uuid
-        view.onClick = { [weak self] in
-            self?.dismiss(uuid: uuid, reason: .click)
-        }
-        panel.contentView = view
-        panel.orderFrontRegardless()
-
-        panels[uuid] = panel
-        visibleUUIDs.insert(uuid)
         updateHealthTimer()
     }
 

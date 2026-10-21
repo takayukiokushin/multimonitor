@@ -41,6 +41,12 @@ final class SettingsStore: ObservableObject {
         settings.displays[uuid] = nil
     }
 
+    /// 最後に表示したファイルを覚えておく(「順番」の続き・「ランダム」の重複よけに使う)。
+    func noteShown(_ path: String, for uuid: String) {
+        guard settings.displays[uuid] != nil, settings.displays[uuid]?.lastShownPath != path else { return }
+        settings.displays[uuid]?.lastShownPath = path
+    }
+
     func setMediaError(_ message: String, for uuid: String) {
         mediaErrors[uuid] = message
     }
